@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-// Webhook verification (GET) — Meta calls this to verify the endpoint
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const mode = searchParams.get('hub.mode')
@@ -16,32 +10,23 @@ export async function GET(req: NextRequest) {
   if (mode === 'subscribe' && token === process.env.WEBHOOK_VERIFY_TOKEN) {
     return new NextResponse(challenge, { status: 200 })
   }
-
   return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 }
 
-// Receive incoming WhatsApp messages (POST)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const messages = body?.entry?.[0]?.changes?.[0]?.value?.messages
 
-    const entry = body?.entry?.[0]
-    const changes = entry?.changes?.[0]
-    const value = changes?.value
-    const messages = value?.messages
+    if (!messages?.length) return NextResponse.json({ status: 'ok' })
 
-    if (!messages || messages.length === 0) {
-      return NextResponse.json({ status: 'ok' })
-    }
+    const supabaseAdmin = getSupabaseAdmin()
 
     for (const msg of messages) {
       if (msg.type !== 'text') continue
-
       const phoneNumber = msg.from
       const messageText = msg.text?.body || ''
-      const messageId = msg.id
 
-      // Try to find the event linked to this phone number
       const { data: clientData } = await supabaseAdmin
         .from('client_details')
         .select('event_id')
@@ -49,15 +34,12 @@ export async function POST(req: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(1)
 
-      const eventId = clientData?.[0]?.event_id || null
-
-      // Store inbound message
       await supabaseAdmin.from('whatsapp_messages').insert([{
-        event_id: eventId,
+        event_id: clientData?.[0]?.event_id || null,
         phone_number: phoneNumber,
         message: messageText,
         direction: 'inbound',
-        message_id: messageId,
+        message_id: msg.id,
         status: 'received',
       }])
     }
@@ -65,6 +47,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'ok' })
   } catch (err) {
     console.error('WhatsApp webhook error:', err)
-    return NextResponse.json({ status: 'ok' }) // Always return 200 to Meta
+    return NextResponse.json({ status: 'ok' })
   }
 }

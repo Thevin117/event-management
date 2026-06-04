@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { getSupabaseAdmin } from '@/lib/supabase'
 
 export async function GET(
   _req: NextRequest,
@@ -12,19 +7,14 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    const supabaseAdmin = getSupabaseAdmin()
     const { data, error } = await supabaseAdmin
       .from('events')
-      .select(`
-        *,
-        client_details (*),
-        bookings (*, equipment (*))
-      `)
+      .select('*, client_details (*), bookings (*, equipment (*))')
       .eq('id', id)
       .single()
-
     if (error) throw error
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
     return NextResponse.json(data)
   } catch (err) {
     console.error('Get event error:', err)
@@ -39,16 +29,10 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await req.json()
-
+    const supabaseAdmin = getSupabaseAdmin()
     const { data, error } = await supabaseAdmin
-      .from('events')
-      .update(body)
-      .eq('id', id)
-      .select()
-      .single()
-
+      .from('events').update(body).eq('id', id).select().single()
     if (error) throw error
-
     return NextResponse.json(data)
   } catch (err) {
     console.error('Update event error:', err)
@@ -62,13 +46,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const { error } = await supabaseAdmin
-      .from('events')
-      .delete()
-      .eq('id', id)
-
+    const supabaseAdmin = getSupabaseAdmin()
+    const { error } = await supabaseAdmin.from('events').delete().eq('id', id)
     if (error) throw error
-
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('Delete event error:', err)

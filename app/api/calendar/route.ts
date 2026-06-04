@@ -1,28 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { generateICS, buildGoogleCalendarLink } from '@/lib/calendar'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-// GET /api/calendar?event_id=xxx — returns ICS file download
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const eventId = searchParams.get('event_id')
-
     if (!eventId) {
       return NextResponse.json({ error: 'event_id required' }, { status: 400 })
     }
 
+    const supabaseAdmin = getSupabaseAdmin()
     const { data: event, error } = await supabaseAdmin
-      .from('events')
-      .select('*, client_details(*)')
-      .eq('id', eventId)
-      .single()
-
+      .from('events').select('*, client_details(*)').eq('id', eventId).single()
     if (error || !event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
@@ -54,17 +44,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/calendar — returns Google Calendar link
 export async function POST(req: NextRequest) {
   try {
     const { event_id } = await req.json()
-
+    const supabaseAdmin = getSupabaseAdmin()
     const { data: event, error } = await supabaseAdmin
-      .from('events')
-      .select('*, client_details(*)')
-      .eq('id', event_id)
-      .single()
-
+      .from('events').select('*, client_details(*)').eq('id', event_id).single()
     if (error || !event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }

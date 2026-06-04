@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { sendWhatsAppMessage } from '@/lib/whatsapp'
 import { z } from 'zod'
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 const schema = z.object({
   event_id: z.string().uuid(),
@@ -25,7 +20,7 @@ export async function POST(req: NextRequest) {
     const { event_id, to, message } = parsed.data
 
     if (!process.env.WHATSAPP_ACCESS_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID) {
-      return NextResponse.json({ error: 'WhatsApp not configured. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID to .env.local' }, { status: 503 })
+      return NextResponse.json({ error: 'WhatsApp not configured. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID to environment variables.' }, { status: 503 })
     }
 
     const result = await sendWhatsAppMessage({
@@ -36,22 +31,13 @@ export async function POST(req: NextRequest) {
     })
 
     if (result.success) {
-      // Store outbound message
+      const supabaseAdmin = getSupabaseAdmin()
       await supabaseAdmin.from('whatsapp_messages').insert([{
-        event_id,
-        phone_number: to,
-        message,
-        direction: 'outbound',
-        message_id: result.messageId,
-        status: 'sent',
+        event_id, phone_number: to, message, direction: 'outbound',
+        message_id: result.messageId, status: 'sent',
       }])
-
       await supabaseAdmin.from('notifications').insert([{
-        event_id,
-        notification_type: 'whatsapp',
-        recipient: to,
-        status: 'sent',
-        message,
+        event_id, notification_type: 'whatsapp', recipient: to, status: 'sent', message,
       }])
     }
 
@@ -66,17 +52,16 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const eventId = searchParams.get('event_id')
-
     if (!eventId) {
       return NextResponse.json({ error: 'event_id required' }, { status: 400 })
     }
 
+    const supabaseAdmin = getSupabaseAdmin()
     const { data, error } = await supabaseAdmin
       .from('whatsapp_messages')
       .select('*')
       .eq('event_id', eventId)
       .order('created_at', { ascending: true })
-
     if (error) throw error
 
     return NextResponse.json(data)
